@@ -1,0 +1,2 @@
+# cloud_detection
+Cloud Detection using an ASC (All Sky Camera)
