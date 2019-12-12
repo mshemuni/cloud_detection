@@ -3,6 +3,14 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+#Test scripts
+deneme.py
+example.py
+main2.py
+
+#Data directory
+data/*
+
 # C extensions
 *.so
 
