@@ -13,6 +13,10 @@ from numpy import float64 as f64
 from numpy import asarray as ar
 from numpy import dstack
 from numpy import unique
+from numpy import cos
+from numpy import ones
+from numpy import ceil
+from numpy import where
 
 from astropy.stats import histogram as hist
 
@@ -41,6 +45,27 @@ class Image:
     """Image Class"""
     def __init__(self, logger):
         self.logger = logger
+        
+    def find_window(self, array, mask):
+        try:
+            result = where(array > 0)
+            
+            x_min = result[0].min()
+            x_max = result[0].max()
+            
+            y_min = result[1].min()
+            y_max = result[1].max()
+            
+            return(array[x_min:x_max, y_min:y_max])
+            
+        except Exception as e:
+            self.logger.log(e)
+        
+    def blank_image(self, shape, fill=0):
+        try:
+            return(ones(ceil(shape).astype(int)) * fill)
+        except Exception as e:
+            self.logger.log(e)
         
     def unique(self, array):
         """Get uniques from array"""
@@ -105,10 +130,15 @@ class Image:
         except Exception as e:
             self.logger.log(e)
             
-    def show(self, array):
+    def show(self, array, add_points=None):
         """Show the image"""
         try:
+            if add_points is not None:
+                colors = ["red", "green", "blue", "cyan"]
+                for it, p in enumerate(add_points):
+                    plt.scatter(p[0], p[1], s=20, c=colors[it])
             plt.imshow(array)
+            plt.axis('off')
             plt.show()
         except Exception as e:
             self.logger.log(e)
@@ -156,6 +186,11 @@ class Image:
         except Exception as e:
             self.logger.log(e)
             
+    def projection(self, angle):
+        try:
+            return(cos(angle))
+        except Exception as e:
+            self.logger.log(e)
 
 
 class Fits:
