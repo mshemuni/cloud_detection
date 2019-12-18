@@ -18,8 +18,6 @@ from os.path import abspath
 
 from datetime import datetime
 
-from getpass import getuser
-
 from platform import uname
 from platform import system
 

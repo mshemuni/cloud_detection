@@ -7,6 +7,7 @@ Created on Wed Dec 11 15:47:51 2019
 from PIL.ImageDraw import Draw as PIDraw
 from PIL.Image import new as PInew
 
+from numpy import float64 as f64
 from numpy import ogrid
 from numpy import sqrt
 from numpy import power
@@ -14,8 +15,14 @@ from numpy import asarray as ar
 from numpy import logical_not as lnot
 from numpy import pi
 from numpy import deg2rad
+from numpy import rad2deg
 from numpy import arctan2
+from numpy import arccos
+from numpy import arange
+from numpy import cos
 from numpy import sin
+
+from math import ceil
 
 from . import ast
 
@@ -26,6 +33,7 @@ class Mask:
         
     def apply(self, data, mask, bkg=None):
         try:
+            self.logger.log("Applying mask")
             copy_od_data = data.copy()
             if bkg is not None:
                 copy_od_data[mask] = bkg[mask]
@@ -39,6 +47,7 @@ class Mask:
 class Geometric(Mask):
     def circular(self, shape, center=None, radius=None,
                  bigger=0, auto=min, rev=False):
+        self.logger.log("Creating circular mask")
         try:
             h, w = shape
             if center is None:
@@ -61,8 +70,8 @@ class Geometric(Mask):
             self.logger.log(e)
             
     def polygon(self, shape, points, rev=False):
+        self.logger.log("Creating ploy mask")
         try:
-            
             img = PInew('L', (shape[1], shape[0]), 0)
             PIDraw(img).polygon(points, outline=1, fill=1)
             mask = ar(img)
@@ -76,14 +85,15 @@ class Geometric(Mask):
         except Exception as e:
             self.logger.log(e)
             
+            
 class Polar(Mask):
 
     def pizza(self, shape, angle_range, center=None, radius=None,
                     offset=90, auto=min, rev=False):
+        self.logger.log("Creating pizza mask")
         try:
             w, h = shape
             x, y = ogrid[:w, :h]
-            
             
             if center is None:
                 center = [int(w/2), int(h/2)]
@@ -117,6 +127,7 @@ class Polar(Mask):
             
     def altaz(self, shape, altitude_range, azimut_range, center=None,
               radius=None, offset=90, auto=min):
+        self.logger.log("Creating AltAz mask")
         try:
             w, h = shape
             
@@ -141,8 +152,92 @@ class Polar(Mask):
             
             the_sum = mask1 + mask2 + mask3
             
-            return(lnot(the_sum==2))
+            return(the_sum==2)
             
         except Exception as e:
             self.logger.log(e)
         
+class SkySlicer:
+    def __init__(self, logger):
+        self.logger = logger
+        
+    def __alt_az_angles__(self, pieces):
+        self.logger.log("Calculating altitudes for {} pieces".format(pieces))
+        try:
+            return(rad2deg(arccos(ar(range(0, pieces + 1)) / pieces)))
+        except Exception as e:
+            self.logger.log(e)
+    
+    def __alt_az_pieces__(self, pieces):
+        self.logger.log("Calculating number of areas for {} pieces".format(pieces))
+        try:
+            return(1 + ar(range(0, pieces)) * 2)
+        except Exception as e:
+            self.logger.log(e)
+            
+    def equal_area(self, pieces, inner_pieces=1):
+        self.logger.log("Slicing to equal area pieces")
+        try:
+            altitude_angles = self.__alt_az_angles__(pieces)
+            each_band_pieces = self.__alt_az_pieces__(pieces) * inner_pieces
+            for altitude in range(len(altitude_angles) - 1):
+                azimuth_angles = arange(0, 361,
+                                        360 / each_band_pieces[altitude])
+                for azimuth in range(len(azimuth_angles) - 1):
+                    yield((tuple(altitude_angles[altitude:altitude + 2]),
+                          tuple(azimuth_angles[azimuth:azimuth + 2])))
+        except Exception as e:
+            self.logger.log(e)
+    
+class HexagonSlicer:
+    def __init__(self, logger):
+        self.logger = logger
+        
+    def __create__(self, center, radus, ang_offset=0):
+        try:
+            points = []
+            for ang in range(0, 360, 60):
+                angle = ang_offset + ang
+                x = radus * cos(deg2rad(angle)) + center[1]
+                y = radus * sin(deg2rad(angle)) + center[0]
+                points.append([x, y])
+                
+            return(ar(points))
+        except Exception as e:
+            self.logger.log(e)
+            
+    def fill_center(self, shape, hex_radius=250, ang_offset=0,
+                    center=None, radius=None, auto=min):
+        self.logger.log("Filling the array with hexagons")
+        try:
+            w, h = shape
+            if center is None:
+                center = [int(w/2), int(h/2)]
+                
+            if radius is None:
+                radius = auto(center[0], center[1], w-center[0], h-center[1])
+                
+            each_dist = hex_radius * sqrt(3) / 2
+                
+            ring_number = ceil(radius / (2 * hex_radius))
+            number_of_hexs = ar(range(0, ring_number + 1)) * 6
+            number_of_hexs[0] = 1
+            for it, number_of_hex in enumerate(number_of_hexs):
+                angle = f64((360/number_of_hex) % 360)
+                R = it * 2 * each_dist
+                for the_hex in range(number_of_hex):
+                    each_ang = the_hex * angle + ang_offset
+                    if each_ang%60 == 0:
+                        r = R
+                    else:
+                        r = ((sqrt(3) / 2) * R) / cos(deg2rad(30-each_ang%60))
+                        
+                    x = r * cos(deg2rad(each_ang))
+                    y = r * sin(deg2rad(each_ang))
+                    hpoints = self.__create__([center[0] + x, center[1] + y],
+                                              hex_radius,
+                                              ang_offset=0)
+                    yield(tuple(map(tuple, hpoints)))
+            
+        except Exception as e:
+            self.logger.log(e)

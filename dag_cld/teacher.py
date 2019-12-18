@@ -34,6 +34,7 @@ class Teacher:
         
     def resize(self, array, new_size):
         """Resize a 2D array"""
+        self.logger.log("Resizing array")
         try:
             if type(new_size) == int:
                 new_size = (new_size, new_size)
@@ -44,6 +45,7 @@ class Teacher:
         
     def shuffle(self, array):
         """Suffle a list"""
+        self.logger.log("Shuffling array")
         try:
             a = ncopy(array)
             nshuffle(a)
@@ -53,6 +55,7 @@ class Teacher:
         
     def random_choices(self, array, number):
         """Choose randomly from a list"""
+        self.logger.log("Choosing randomly")
         try:
             return(choices(array, k=number))
         except Exception as e:
@@ -60,6 +63,7 @@ class Teacher:
             
     def class_adder(self, array, cl):
         """Add class identifier to array"""
+        self.logger.log("Adding class")
         try:
             class_array = ones((array.shape[0], 1)) * cl
             return(hstack((array, class_array)))
@@ -68,6 +72,7 @@ class Teacher:
             
     def class_combiner(self, array1, array2):
         """Stack classes to one array"""
+        self.logger.log("Combining classes")
         try:
             return(vstack((array1, array2)))
         except Exception as e:
@@ -77,29 +82,47 @@ class SVM(Teacher):
     """Support Vector Machine Class"""
     def tts(self, array, test_size=0.20):
         """Split array to train and test arrays"""
+        self.logger.log("Splitting test and training")
         try:
             ar = array[:,:-1]
             cl = array[:,-1]
+            
             return(train_test_split(ar, cl, test_size=test_size))
         except Exception as e:
             self.logger.log(e)
             
     def classifier(self, train_x, train_y, kernel="linear", gamma='auto'):
         """Create classifier"""
-        clf = SVC(kernel=kernel, gamma=gamma)
-        return(clf.fit(train_x, train_y))
+        try:
+            self.logger.log("Training")
+            clf = SVC(kernel=kernel, gamma=gamma)
+            return(clf.fit(train_x, train_y))
+        except Exception as e:
+            self.logger.log(e)
         
     def predict(self, classfier, data):
         """Predict for a given value list"""
-        return(classfier.predict(data))
+        self.logger.log("Predicting")
+        try:
+            return(classfier.predict(data))
+        except Exception as e:
+            self.logger.log(e)
         
     def save(self, model, filename):
         """Save classifier to file"""
-        dump(model, filename)
+        self.logger.log("Saving classifier")
+        try:
+            dump(model, filename)
+        except Exception as e:
+            self.logger.log(e)
         
     def load(self, filename):
         """Save classifier from file"""
-        return(pload(open(filename, 'rb')))
+        self.logger.log("Loading classifier from file")
+        try:
+            return(pload(open(filename, 'rb')))
+        except Exception as e:
+            self.logger.log(e)
         
 class CNN(Teacher):
     """Convolutional Neural Network Class"""
