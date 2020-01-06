@@ -500,7 +500,7 @@ def save_svm(path):
         
         clsf = svm.classifier(X_train, y_train)
         
-        svm.save(clsf, "clsf/svm_day_{}.clsf".format(direction))
+        svm.save(clsf, "clsf/svm_night_{}.clsf".format(direction))
         
 def load_svm(path):
     for direction, coordinates in mask_coordinates.items():
@@ -549,4 +549,4 @@ def load_svm(path):
         print(res)
 
 if __name__ == "__main__":
-    load_svm("D:/asc/day")
+    save_svm("D:/asc/night")

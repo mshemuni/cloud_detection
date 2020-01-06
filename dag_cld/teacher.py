@@ -73,12 +73,16 @@ class Teacher:
         self.logger = logger
         
     def save(self, clsf, file_name):
+        """Save given classifier to file"""
+        self.logger.log("Saving Classifier")
         try:
             jldump(clsf, file_name) 
         except Exception as excpt:
             self.logger.log(excpt)
             
     def load(self, file_name):
+        """Load given classifier from file"""
+        self.logger.log("Loading Classifier")
         try:
             return(jlload(file_name))
         except Exception as excpt:
