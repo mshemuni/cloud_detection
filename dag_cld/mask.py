@@ -23,6 +23,9 @@ from numpy import arccos
 from numpy import arange
 from numpy import cos
 from numpy import sin
+from numpy import linspace
+from numpy import hstack
+from numpy import ones
 
 from . import ast
 
@@ -131,7 +134,7 @@ class Polar(Mask):
             self.logger.log(excpt)
 
     def altaz(self, shape, altitude_range, azimut_range, center=None,
-              radius=None, offset=90, auto=min):
+              radius=None, offset=90, auto=min, rev=False):
         """Creates an AltAz mask"""
         self.logger.log("Creating AltAz mask")
         try:
@@ -156,7 +159,10 @@ class Polar(Mask):
 
             the_sum = mask1 + mask2 + mask3
 
-            return the_sum == 2
+            if rev:
+                return lnot(the_sum == 2)
+            else:
+                return the_sum == 2
         except Exception as excpt:
             self.logger.log(excpt)
 
@@ -165,7 +171,7 @@ class SkySlicer:
     def __init__(self, logger):
         self.logger = logger
 
-    def __alt_az_angles__(self, pieces):
+    def __equal_linear_altitude_slicer__(self, pieces):
         """Generates AltAz for given pieces"""
         self.logger.log("Calculating altitudes for {} pieces".format(pieces))
         try:
@@ -173,9 +179,10 @@ class SkySlicer:
         except Exception as excpt:
             self.logger.log(excpt)
 
-    def __alt_az_pieces__(self, pieces):
+    def __equal_area_azimuth_slicer__(self, pieces):
         """Generates AltAz widenings"""
-        self.logger.log("Calculating number of areas for {} pieces".format(pieces))
+        self.logger.log("Calculating number of areas for {} pieces".format(
+                pieces))
         try:
             return 1 + ar(range(0, pieces)) * 2
         except Exception as excpt:
@@ -185,8 +192,9 @@ class SkySlicer:
         """Splits array to equal AltAz areas"""
         self.logger.log("Slicing to equal area pieces")
         try:
-            altitude_angles = self.__alt_az_angles__(pieces)
-            each_band_pieces = self.__alt_az_pieces__(pieces) * inner_pieces
+            altitude_angles = self.__equal_linear_altitude_slicer__(pieces)
+            each_band_pieces = self.__equal_area_azimuth_slicer__(
+                    pieces) * inner_pieces
             for altitude in range(len(altitude_angles) - 1):
                 azimuth_angles = arange(0, 361,
                                         360 / each_band_pieces[altitude])
@@ -195,13 +203,29 @@ class SkySlicer:
                            tuple(azimuth_angles[azimuth:azimuth + 2])))
         except Exception as excpt:
             self.logger.log(excpt)
+            
+    def equal_angle(self, n_alt, n_az):
+        try:
+            altitudes = linspace(0, 90, n_alt + 1)
+            azimuths = linspace(0, 360, n_az + 1)
+            
+            ret = []
+            
+            for altitude in range(len(altitudes) - 1):
+                for azimuth in range(len(azimuths) - 1):
+                    ret.append(ar([altitudes[altitude:altitude + 2],
+                                   azimuths[azimuth:azimuth + 2]]))
+    
+            return ar(ret)
+        except Exception as excpt:
+            self.logger.log(excpt)
 
 class HexagonSlicer:
     """Generates hexagon masks"""
     def __init__(self, logger):
         self.logger = logger
 
-    def __create__(self, center, radus, ang_offset=0):
+    def __hexagon_creator__(self, center, radus, ang_offset=0):
         """Creates corner points of a hexagon"""
         try:
             points = []
@@ -244,9 +268,26 @@ class HexagonSlicer:
 
                     x = r * cos(deg2rad(each_ang))
                     y = r * sin(deg2rad(each_ang))
-                    hpoints = self.__create__([center[0] + x, center[1] + y],
-                                              hex_radius,
-                                              ang_offset=0)
+                    hpoints = self.__hexagon_creator__(
+                            [center[0] + x, center[1] + y],
+                            hex_radius, ang_offset=0)
+
                     yield tuple(map(tuple, hpoints))
+        except Exception as excpt:
+            self.logger.log(excpt)
+            
+    def fill(self, shape, hex_radius=250):
+        try:
+            w, h = shape
+            x_ps = arange(0, w, hex_radius*sqrt(3)).reshape(-1, 1)
+            
+            ret = []
+            
+            for i in arange(0, h, 2 * hex_radius * sqrt(3)):
+                for u in hstack((x_ps, ones(x_ps.shape) * i)):
+                    ret.append(self.__hexagon_creator__(u, hex_radius))
+                    
+            return ar(ret)
+            
         except Exception as excpt:
             self.logger.log(excpt)

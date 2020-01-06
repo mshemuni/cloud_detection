@@ -4,164 +4,549 @@ Created on Thu Nov 28 09:52:07 2019
 
 @author: mshem
 """
-
-from numpy import logical_not as lnot
-
 from dag_cld import env
 from dag_cld import ast
 from dag_cld import mask
 from dag_cld import teacher
 
 logger = env.Logger(blabla=True)
-fil = env.File(logger)
+fop = env.File(logger)
 
-fts = ast.Fits(logger)
+pmask = mask.Polar(logger)
 ima = ast.Image(logger)
 
-gmask = mask.Geometric(logger)
-pmask = mask.Polar(logger)
-
 svm = teacher.SVM(logger)
+cnn = teacher.CNN(logger)
+knn = teacher.KNN(logger)
+lr = teacher.LR(logger)
+nb = teacher.NB(logger)
 
-def generate_hos():
-    files = fil.list_in_path("E:/data/partial/*_??.fits")
-    
-    alt_ranges = [(0, 45), (45, 65), (65, 80), (80, 90)]
-    az_ranges = [(0, 22.5), (22.5, 45), (45, 67.5), (67.5, 90),
-                 (90, 112.5), (112.5, 135), (135, 157.5), (157.5, 180),
-                 (180, 202.5), (202.5, 225), (225, 247.5), (247.5, 270),
-                 (270, 292.5), (292.5, 315), (315, 337.5), (337.5, 360)]
-    
-    for itf, file in enumerate(files):
-        data = fts.data(file)
-        gimage = ima.rgb2gray(ima.array2rgb(data))
-        abs_p = fil.abs_path(file)
-        path, file_name, ext = fil.split_file_name(abs_p)
-        for it1, alt_range in enumerate(alt_ranges):
-            for it2, az_range in enumerate(az_ranges):
-                fits_path = "{}/{}/{}/{}{}".format(path, it1, it2, file_name, ext)
-                hog_path = "{}/{}/{}/{}_hog{}".format(path, it1, it2, file_name, ext)
-                vec_path = "{}/{}/{}/{}.vec".format(path, it1, it2, file_name)
-                aiza_mask = pmask.altaz(gimage.shape, alt_range, az_range)
-                amasked_data = pmask.apply(gimage, aiza_mask)
-                c_image = ima.find_window(amasked_data, aiza_mask)
-                hogs = ima.hog(c_image, show=False, mchannel=False)
-                fts.write(fits_path, c_image)
-                fts.write(hog_path, hogs[1])
-                fil.save_numpy(vec_path, hogs[0])
-                
-        logger.log((itf+1) / len(files))
+coord = ast.Coordinates(logger)
+fts = ast.Fits(logger)
+asttime = ast.Time(logger)
+
+lat = coord.create("41.2333 degree")
+lon = coord.create("39.7833 degree")
+ele = 3170
+number_of_samples = 500
+
+site = ast.Site(logger, lat, lon, ele)
+timeCalc = ast.TimeCalc(logger, site)
+
+mask_coordinates = {"E": ((20, 70), (45, 135)), "S": ((20, 70), (135, 225)),
+                    "W": ((20, 70), (225, 315)), "N": ((20, 70), (315, 405)),
+                    "ZE": ((70, 90), (45, 135)), "ZS": ((70, 90), (135, 225)),
+                    "ZW": ((70, 90), (225, 315)), "ZN": ((70, 90), (315, 405))}
+
+#mask_coordinates = {"S": ((20, 70), (135, 225)), "N": ((20, 70), (315, 405))}
         
-def classifier(file=None):
-    alt_ranges = ["0, 45", "45, 65", "65, 80", "80, 90"]
-    az_ranges = ["0, 22.5", "22.5, 45", "45, 67.5", "67.5, 90",
-                 "90, 112.5", "112.5, 135", "135, 157.5", "157.5, 180",
-                 "180, 202.5", "202.5, 225", "225, 247.5", "247.5, 270",
-                 "270, 292.5", "292.5, 315", "315, 337.5", "337.5, 360"]
+def show_data(file):
+    data = fts.data(file)
+    gray = ima.rgb2gray(ima.array2rgb(data))
+    mask = pmask.altaz(gray.shape, mask_coordinates["N"][0],
+                       mask_coordinates["N"][1], rev=True)
+    masked_data = pmask.apply(gray, mask)
+    w_data = ima.find_window(masked_data)
+    vec, hog = ima.hog(w_data, show=True, mchannel=False)
+    ima.show(hog)
     
-    res = []
-    data = None
-    for alt in range(4):
-        for az in range(16):
-            open_files_all = fil.list_in_path(
-                    "E:/data/day/all_open/{}/{}/*.vec".format(alt, az))
-            open_files = svm.random_choices(open_files_all, 70)
-            o_data = []
-            for o_file in open_files:
-                o_data.append(fil.read_array(o_file))
-                
-            cloudy_files_all = fil.list_in_path(
-                    "E:/data/day/all_cloudy/{}/{}/*.vec".format(alt, az))
-            
-            cloudy_files = svm.random_choices(cloudy_files_all, 70)
-            
-            c_data = []
-            for c_file in cloudy_files:
-                c_data.append(fil.read_array(c_file))
-                
-            o_data = ima.list2array(o_data)
-            c_data = ima.list2array(c_data)
-            
-            
-            
-            partial_files_all = fil.list_in_path(
-                    "E:/data/day/partial/{}/{}/*.vec".format(alt, az))
-            
-            partial_files = svm.random_choices(partial_files_all, 70)
-            
-            p_data = []
-            for p_file in partial_files:
-                p_data.append(fil.read_array(p_file))
-                
-            o_data = ima.list2array(o_data)
-            c_data = ima.list2array(c_data)
-            p_data = ima.list2array(p_data)
-            
-            all_data = svm.class_combiner(svm.class_adder(o_data, 1),
-                                          svm.class_adder(c_data, 0),
-                                          svm.class_adder(p_data, 2))
-            
-            X_train, X_test, y_train, y_test = svm.tts(all_data, test_size=0.1)
-            
-            clf = svm.classifier(X_train, y_train)
-            
-            if file is None:
-                with open("{}__{}.res".format(
-                        alt_ranges[alt].replace(", ", "_"),
-                        az_ranges[az].replace(", ", "_")), "w") as f:
-                
-                    for c_file in cloudy_files_all:
-                        data = fil.read_array(c_file)
-                        print(alt_ranges[alt], az_ranges[az],
-                              svm.predict(clf, [data])[0], 0)
-                        f.write("{}\t{}\t{}\t{}\n".format(
-                                alt_ranges[alt], az_ranges[az],
-                                svm.predict(clf, [data])[0], 0))
-        
-                    for o_file in open_files_all:
-                        data = fil.read_array(o_file)
-                        print(alt_ranges[alt], az_ranges[az],
-                              svm.predict(clf, [data])[0], 1)
-                        f.write("{}\t{}\t{}\t{}\n".format(
-                                alt_ranges[alt], az_ranges[az],
-                                svm.predict(clf, [data])[0], 1))
+def day_night_splitter(directory):
+    files = fop.list_in_path("{}/*.gz".format(directory))
+    for it, file in enumerate(files):
+        _, fn, _ = fop.split_file_name(file)
+        loc_time = asttime.str2time(fn, FORMAT="%Y_%m_%d__%H_%M_%S.fits")
+        utc = asttime.time_diff(loc_time)
+        dp = timeCalc.day_part(utc)
+        if dp is not None:
+            if dp == 1:
+                fop.mv(file, "{}/NIGHT".format(directory))
+            elif dp == 0:
+                fop.mv(file, "{}/DAY".format(directory))
             else:
-                alrange = list(map(float, alt_ranges[alt].split(", ")))
-                azrange = list(map(float, az_ranges[az].split(", ")))
-                data = fts.data(file)
-                gimage = ima.rgb2gray(ima.array2rgb(data))
-                aiza_mask = pmask.altaz(gimage.shape, alrange, azrange)
-                amasked_data = pmask.apply(gimage, aiza_mask)
-                c_image = ima.find_window(amasked_data, aiza_mask)
-                hogs = ima.hog(c_image, show=False, mchannel=False)
-                co = svm.predict(clf, [hogs[0]])[0]
-                res.append([aiza_mask, co])
+                fop.mv(file, "{}/DZ".format(directory))
+        logger.log((it + 1)/len(files))
 
-    res  = ima.list2array(res)
+def vec_generator(directory):
+        files = fop.list_in_path("{}/*.gz".format(directory))
+        for it, file in enumerate(files):
+            try:
+                data = fts.data(file)
+                header = fts.header(file, field="?")
                 
-    if res is not []:
-        print(res.shape)
+                path, fname, _ = fop.split_file_name(file)
+                fname = fname.replace(".fits", "").replace(".fit", "")
+                
+                gray = ima.resize(ima.rgb2gray(ima.array2rgb(data)), "25%")
+                
+                for direction, coordinates in mask_coordinates.items():
+                    
+                    header["mask"] = (','.join(
+                            [str(elem) for elem in coordinates]),
+                          "Altitude range, Azimut range")
+                    header["mask_d"] = (direction, "Mask Description")
+                    
+                    
+                    the_mask = pmask.altaz(gray.shape, coordinates[0],
+                                           coordinates[1], rev=True)
+                    masked_data = pmask.apply(gray, the_mask)
+                    windowed_masked_data = ima.find_window(masked_data)
+        
+                    vec, hog_im = ima.hog(windowed_masked_data, mchannel=False)
+                    header["IMAGETYP"] = ("IH", "Vector, Hog or Image")
+                    fts.write("{}/{}_{}.fits.gz".format(path, fname,
+                              direction),
+                              ima.list2array([windowed_masked_data, hog_im]),
+                              header=header)
+                    header["IMAGETYP"] = ("V", "Vector, Hog or Image")
+                    fts.write("{}/{}_{}_vec.fits.gz".format(path, fname,
+                              direction),
+                              vec, header=header)
+            except Exception as e:
+                logger.log(e)
+                
+                
+def the_svm(path):
+    for direction, coordinates in mask_coordinates.items():
+        sky_files = fop.list_in_path("{}/clear/*_{}_vec.fits.gz".format(
+        path, direction))
+        cld_files = fop.list_in_path("{}/cloud/*_{}_vec.fits.gz".format(
+        path, direction))
+        
+        random_sky_files = svm.random_choices(sky_files, number_of_samples)
+        random_cld_files = svm.random_choices(cld_files, number_of_samples)
+        
+        random_sky_vectors = []
+        for random_sky_file in random_sky_files:
+            vec = fts.data(random_sky_file)
+            random_sky_vectors.append(vec)
+        
+        random_sky_vectors = ima.list2array(random_sky_vectors)
+        
+        
+        random_cld_vectors = []
+        for random_cld_file in random_cld_files:
+            vec = fts.data(random_cld_file)
+            random_cld_vectors.append(vec)
+        
+        random_cld_vectors = ima.list2array(random_cld_vectors)
+        
+        
+        whole_classes = svm.class_combiner(
+        svm.class_adder(random_sky_vectors, 1),
+        svm.class_adder(random_cld_vectors, 0))
+        
+        whole_classes = svm.shuffle(whole_classes)
+        
+        training, test = svm.tts(whole_classes, test_size=0.20)
+        
+        X_train, y_train = training[:, :-1], training[:, -1]
+        X_test, y_test = test[:, :-1], test[:, -1]
+        
+        clsf = svm.classifier(X_train, y_train)
+        
+        y_predict = svm.predict(clsf, X_test)
+        
+        res = [direction]
+        for method, acc in svm.accuracy(y_test, y_predict).items():
+            res.append("{:.4f}".format(acc))
+            
+        yield res
+        
+def the_knn(path):
+    for direction, coordinates in mask_coordinates.items():
+        sky_files = fop.list_in_path("{}/clear/*_{}_vec.fits.gz".format(
+        path, direction))
+        cld_files = fop.list_in_path("{}/cloud/*_{}_vec.fits.gz".format(
+        path, direction))
+        
+        random_sky_files = svm.random_choices(sky_files, number_of_samples)
+        random_cld_files = svm.random_choices(cld_files, number_of_samples)
+        
+        random_sky_vectors = []
+        for random_sky_file in random_sky_files:
+            vec = fts.data(random_sky_file)
+            random_sky_vectors.append(vec)
+        
+        random_sky_vectors = ima.list2array(random_sky_vectors)
+        
+        
+        random_cld_vectors = []
+        for random_cld_file in random_cld_files:
+            vec = fts.data(random_cld_file)
+            random_cld_vectors.append(vec)
+        
+        random_cld_vectors = ima.list2array(random_cld_vectors)
+        
+        
+        whole_classes = svm.class_combiner(
+        svm.class_adder(random_sky_vectors, 1),
+        svm.class_adder(random_cld_vectors, 0))
+        
+        whole_classes = svm.shuffle(whole_classes)
+        
+        training, test = svm.tts(whole_classes, test_size=0.20)
+        
+        X_train, y_train = training[:, :-1], training[:, -1]
+        X_test, y_test = test[:, :-1], test[:, -1]
+        clsf = knn.classifier(X_train, y_train, n_neighbors=3)
+        y_predict = svm.predict(clsf, X_test)
+        
+        res = [direction]
+        for method, acc in svm.accuracy(y_test, y_predict).items():
+            res.append("{:.4f}".format(acc))
+            
+        yield res
+
+def the_cnn(path):
+    for direction, coordinates in mask_coordinates.items():
+        sky_files = fop.list_in_path("{}/clear/*_{}.fits.gz".format(
+                path, direction))
+        cld_files = fop.list_in_path("{}/cloud/*_{}.fits.gz".format(
+                path, direction))
+        
+        random_sky_files = svm.random_choices(sky_files, number_of_samples)
+        random_cld_files = svm.random_choices(cld_files, number_of_samples)
+        
+        whole_data = []
+        
+        for random_sky_file in random_sky_files:
+            the_data = fts.data(random_sky_file)[0]
+            whole_data.append([ima.normalize(the_data), 1])
+            
+        for random_cld_file in random_cld_files:
+            the_data = fts.data(random_cld_file)[0]
+            whole_data.append([ima.normalize(the_data), 0])
+            
+        training, test = cnn.tts(whole_data)
+        
+        X_train = []
+        y_train = []
+        for data, clss in training:
+            X_train.append(data)
+            y_train.append(clss)
+        
+        X_test = []
+        y_test = []
+        for data, clss in test:
+            X_test.append(data)
+            y_test.append(clss)
+            
+        w, h = X_train[0].shape
+        
+        X_train = ima.list2array(X_train).reshape(-1, w, h, 1)
+        y_train = ima.list2array(y_train)
+        
+        X_test = ima.list2array(X_test).reshape(-1, w, h, 1)
+        y_test = ima.list2array(y_test)
+        
+        clsf = cnn.classifier(X_train, y_train, X_test, y_test, epochs=50, plot=False)
+        
+        y_predict = cnn.predict(clsf, X_test)
+        y_predict = y_predict.astype(int)[:, 0]
+        
+        res = [direction]
+        for method, acc in cnn.accuracy(y_test, y_predict).items():
+            res.append("{:.4f}".format(acc))
+            
+        yield res
+
+def the_lr(path):
+    for direction, coordinates in mask_coordinates.items():
+        sky_files = fop.list_in_path("{}/clear/*_{}_vec.fits.gz".format(
+        path, direction))
+        cld_files = fop.list_in_path("{}/cloud/*_{}_vec.fits.gz".format(
+        path, direction))
+        
+        random_sky_files = lr.random_choices(sky_files, number_of_samples)
+        random_cld_files = lr.random_choices(cld_files, number_of_samples)
+        
+        random_sky_vectors = []
+        for random_sky_file in random_sky_files:
+            vec = fts.data(random_sky_file)
+            random_sky_vectors.append(vec)
+        
+        random_sky_vectors = ima.list2array(random_sky_vectors)
+        
+        
+        random_cld_vectors = []
+        for random_cld_file in random_cld_files:
+            vec = fts.data(random_cld_file)
+            random_cld_vectors.append(vec)
+        
+        random_cld_vectors = ima.list2array(random_cld_vectors)
+        
+        
+        whole_classes = lr.class_combiner(
+        lr.class_adder(random_sky_vectors, 1),
+        lr.class_adder(random_cld_vectors, 0))
+        
+        whole_classes = lr.shuffle(whole_classes)
+        
+        training, test = lr.tts(whole_classes, test_size=0.20)
+        
+        X_train, y_train = training[:, :-1], training[:, -1]
+        X_test, y_test = test[:, :-1], test[:, -1]
+        
+        clsf = lr.classifier(X_train, y_train)
+        
+        y_predict = lr.predict(clsf, X_test)
+        
+        res = [direction]
+        for method, acc in lr.accuracy(y_test, y_predict).items():
+            res.append("{:.4f}".format(acc))
+            
+        yield res
+        
+def the_nb(path, tp="GAUSSIAN"):
+    for direction, coordinates in mask_coordinates.items():
+        sky_files = fop.list_in_path("{}/clear/*_{}_vec.fits.gz".format(
+        path, direction))
+        cld_files = fop.list_in_path("{}/cloud/*_{}_vec.fits.gz".format(
+        path, direction))
+        
+        random_sky_files = nb.random_choices(sky_files, number_of_samples)
+        random_cld_files = nb.random_choices(cld_files, number_of_samples)
+        
+        random_sky_vectors = []
+        for random_sky_file in random_sky_files:
+            vec = fts.data(random_sky_file)
+            random_sky_vectors.append(vec)
+        
+        random_sky_vectors = ima.list2array(random_sky_vectors)
+        
+        
+        random_cld_vectors = []
+        for random_cld_file in random_cld_files:
+            vec = fts.data(random_cld_file)
+            random_cld_vectors.append(vec)
+        
+        random_cld_vectors = ima.list2array(random_cld_vectors)
+        
+        
+        whole_classes = nb.class_combiner(
+        nb.class_adder(random_sky_vectors, 1),
+        nb.class_adder(random_cld_vectors, 0))
+        
+        whole_classes = nb.shuffle(whole_classes)
+        
+        training, test = nb.tts(whole_classes, test_size=0.20)
+        
+        X_train, y_train = training[:, :-1], training[:, -1]
+        X_test, y_test = test[:, :-1], test[:, -1]
+        
+        clsf = nb.classifier(X_train, y_train, tp=tp)
+        
+        y_predict = nb.predict(clsf, X_test)
+        
+        res = [direction]
+        for method, acc in nb.accuracy(y_test, y_predict).items():
+            res.append("{:.4f}".format(acc))
+            
+        yield res
+        
+def the_lr_save(path):
+    for direction, coordinates in mask_coordinates.items():
+        sky_files = fop.list_in_path("{}/clear/*_{}_vec.fits.gz".format(
+        path, direction))
+        cld_files = fop.list_in_path("{}/cloud/*_{}_vec.fits.gz".format(
+        path, direction))
+        
+        random_sky_files = lr.random_choices(sky_files, number_of_samples)
+        random_cld_files = lr.random_choices(cld_files, number_of_samples)
+        
+        random_sky_vectors = []
+        for random_sky_file in random_sky_files:
+            vec = fts.data(random_sky_file)
+            random_sky_vectors.append(vec)
+        
+        random_sky_vectors = ima.list2array(random_sky_vectors)
+        
+        
+        random_cld_vectors = []
+        for random_cld_file in random_cld_files:
+            vec = fts.data(random_cld_file)
+            random_cld_vectors.append(vec)
+        
+        random_cld_vectors = ima.list2array(random_cld_vectors)
+        
+        
+        whole_classes = lr.class_combiner(
+        lr.class_adder(random_sky_vectors, 1),
+        lr.class_adder(random_cld_vectors, 0))
+        
+        whole_classes = lr.shuffle(whole_classes)
+        
+        training, test = lr.tts(whole_classes, test_size=0.20)
+        
+        X_train, y_train = training[:, :-1], training[:, -1]
+        X_test, y_test = test[:, :-1], test[:, -1]
+        
+        clsf = lr.classifier(X_train, y_train)
+        
+        clsf.save("./deneme.cls")
+    
+def all_types(path):
+    for epoch in range(50):
+        for direction, coordinates in mask_coordinates.items():
+            sky_files = fop.list_in_path("{}/clear/*_{}_vec.fits.gz".format(
+            path, direction))
+            cld_files = fop.list_in_path("{}/cloud/*_{}_vec.fits.gz".format(
+            path, direction))
+            
+            random_sky_files = lr.random_choices(sky_files, number_of_samples)
+            random_cld_files = lr.random_choices(cld_files, number_of_samples)
+            
+            random_sky_vectors = []
+            for random_sky_file in random_sky_files:
+                vec = fts.data(random_sky_file)
+                random_sky_vectors.append(vec)
+            
+            random_sky_vectors = ima.list2array(random_sky_vectors)
+            
+            
+            random_cld_vectors = []
+            for random_cld_file in random_cld_files:
+                vec = fts.data(random_cld_file)
+                random_cld_vectors.append(vec)
+            
+            random_cld_vectors = ima.list2array(random_cld_vectors)
+            
+            
+            whole_classes = lr.class_combiner(
+            lr.class_adder(random_sky_vectors, 1),
+            lr.class_adder(random_cld_vectors, 0))
+            
+            whole_classes = lr.shuffle(whole_classes)
+            
+            training, test = lr.tts(whole_classes, test_size=0.20)
+            
+            X_train, y_train = training[:, :-1], training[:, -1]
+            X_test, y_test = test[:, :-1], test[:, -1]
+            
+            svm_clsf = svm.classifier(X_train, y_train)
+            svm_y_predict = svm.predict(svm_clsf, X_test)
+            smv_acc = list(svm.accuracy(y_test, svm_y_predict).values())
+            
+            knn_clsf = knn.classifier(X_train, y_train)
+            knn_y_predict = knn.predict(knn_clsf, X_test)
+            knn_acc = list(knn.accuracy(y_test, knn_y_predict).values())
+            
+            lr_clsf = lr.classifier(X_train, y_train)
+            lr_y_predict = lr.predict(lr_clsf, X_test)
+            lr_acc = list(lr.accuracy(y_test, lr_y_predict).values())
+            
+            nbga_clsf = nb.classifier(X_train, y_train, tp="GAUSSIAN")
+            nbga_y_predict = nb.predict(nbga_clsf, X_test)
+            nbga_acc = list(nb.accuracy(y_test, nbga_y_predict).values())
+            
+            nbbe_clsf = nb.classifier(X_train, y_train, tp="BERNOULLI")
+            nbbe_y_predict = nb.predict(nbbe_clsf, X_test)
+            nbbe_acc = list(nb.accuracy(y_test, nbbe_y_predict).values())
+            
+            nbca_clsf = nb.classifier(X_train, y_train, tp="CATEGORICAL")
+            nbca_y_predict = nb.predict(nbca_clsf, X_test)
+            nbca_acc = list(nb.accuracy(y_test, nbca_y_predict).values())
+            
+            nbco_clsf = nb.classifier(X_train, y_train, tp="COMPLEMENT")
+            nbco_y_predict = nb.predict(nbco_clsf, X_test)
+            nbco_acc = list(nb.accuracy(y_test, nbco_y_predict).values())
+            
+            nbmu_clsf = nb.classifier(X_train, y_train, tp="MULTINOMIAL")
+            nbmu_y_predict = nb.predict(nbmu_clsf, X_test)
+            nbmu_acc = list(nb.accuracy(y_test, nbmu_y_predict).values())
+            
+            all_lst = [epoch, direction] + smv_acc + knn_acc + lr_acc
+            all_lst += nbga_acc + nbbe_acc + nbca_acc + nbco_acc + nbmu_acc
+            all_lst = list(map(str, all_lst))
+            yield ", ".join(all_lst)
+        
+        
+def save_svm(path):
+    for direction, coordinates in mask_coordinates.items():
+        sky_files = fop.list_in_path("{}/clear/*_{}_vec.fits.gz".format(
+        path, direction))
+        cld_files = fop.list_in_path("{}/cloud/*_{}_vec.fits.gz".format(
+        path, direction))
+        
+        random_sky_files = svm.random_choices(sky_files, number_of_samples)
+        random_cld_files = svm.random_choices(cld_files, number_of_samples)
+        
+        random_sky_vectors = []
+        for random_sky_file in random_sky_files:
+            vec = fts.data(random_sky_file)
+            random_sky_vectors.append(vec)
+        
+        random_sky_vectors = ima.list2array(random_sky_vectors)
+        
+        
+        random_cld_vectors = []
+        for random_cld_file in random_cld_files:
+            vec = fts.data(random_cld_file)
+            random_cld_vectors.append(vec)
+        
+        random_cld_vectors = ima.list2array(random_cld_vectors)
+        
+        
+        whole_classes = svm.class_combiner(
+        svm.class_adder(random_sky_vectors, 1),
+        svm.class_adder(random_cld_vectors, 0))
+        
+        whole_classes = svm.shuffle(whole_classes)
+        
+        training, test = svm.tts(whole_classes, test_size=0.10)
+        
+        X_train, y_train = training[:, :-1], training[:, -1]
+        X_test, y_test = test[:, :-1], test[:, -1]
+        
+        clsf = svm.classifier(X_train, y_train)
+        
+        svm.save(clsf, "clsf/svm_day_{}.clsf".format(direction))
+        
+def load_svm(path):
+    for direction, coordinates in mask_coordinates.items():
+        sky_files = fop.list_in_path("{}/clear/*_{}_vec.fits.gz".format(
+        path, direction))
+        cld_files = fop.list_in_path("{}/cloud/*_{}_vec.fits.gz".format(
+        path, direction))
+        
+        random_sky_files = svm.random_choices(sky_files, number_of_samples)
+        random_cld_files = svm.random_choices(cld_files, number_of_samples)
+        
+        random_sky_vectors = []
+        for random_sky_file in random_sky_files:
+            vec = fts.data(random_sky_file)
+            random_sky_vectors.append(vec)
+        
+        random_sky_vectors = ima.list2array(random_sky_vectors)
+        
+        
+        random_cld_vectors = []
+        for random_cld_file in random_cld_files:
+            vec = fts.data(random_cld_file)
+            random_cld_vectors.append(vec)
+        
+        random_cld_vectors = ima.list2array(random_cld_vectors)
+        
+        
+        whole_classes = svm.class_combiner(
+        svm.class_adder(random_sky_vectors, 1),
+        svm.class_adder(random_cld_vectors, 0))
+        
+        whole_classes = svm.shuffle(whole_classes)
+        
+        training, test = svm.tts(whole_classes, test_size=0.99)
+        
+        X_train, y_train = training[:, :-1], training[:, -1]
+        
+        clsf = svm.load("clsf/svm_day_{}.clsf".format(direction))
+        
+        y_predict = svm.predict(clsf, X_train)
+        
+        res = [direction]
+        for method, acc in svm.accuracy(y_train, y_predict).items():
+            res.append("{:.4f}".format(acc))
+            
         print(res)
-        w, h = res[0][0].shape
-        new_array_r = ima.blank_image((w, h))
-        new_array_g = ima.blank_image((w, h))
-        new_array_b = ima.blank_image((w, h))
-        for d in res:
-            if d[1] == 1:
-                new_array_g += lnot(d[0]).astype(int)
-            elif d[1] == 2:
-                new_array_r += lnot(d[0]).astype(int)
-            elif d[1] == 0:
-                new_array_r += lnot(d[0]).astype(int)
-              
-        fil.save_numpy("red", new_array_r)
-        fil.save_numpy("green", new_array_g)
-        fil.save_numpy("blue", new_array_b)
-                
-        ima.show(ima.array2rgb(ima.list2array([new_array_r,
-                                               new_array_g,
-                                               new_array_b])))
-                
+
 if __name__ == "__main__":
-#    classifier("E:/data/2017_08_18__12_42_25.fits")
-    generate_hos()
+    load_svm("D:/asc/day")

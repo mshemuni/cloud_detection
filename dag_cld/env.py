@@ -11,6 +11,10 @@ from os.path import basename
 from os.path import realpath
 from os.path import splitext
 from os.path import abspath
+from os import remove
+
+
+from shutil import move
 
 from datetime import datetime
 
@@ -155,6 +159,14 @@ class File:
         except Exception as excpt:
             self.logger.log(excpt)
 
+    def save_list(self, src, lst):
+        try:
+            with open(src, "w") as file:
+                for ln in lst:
+                    file.write("{}\n".format(ln))
+        except Exception as e:
+            self.logger.log(e)
+
     def save_numpy(self, src, arr, dm=" ", h=""):
         """Writes an array to a file"""
         self.logger.log("Writing to {0}".format(src))
@@ -175,3 +187,19 @@ class File:
                 return data
         except Exception as excpt:
             self.logger.log(excpt)
+            
+    def mv(self, src, dst):
+        """Moves a given file"""
+        self.logger.log("Moving file {0} to {1}".format(src, dst))
+        try:
+            move(src, dst)
+        except Exception as e:
+            self.logger.log(e)
+            
+    def rm(self, src):
+        """Removes a given file"""
+        self.logger.log("Removing file {0}".format(src))
+        try:
+            remove(src)
+        except Exception as e:
+            self.logger.log(e)

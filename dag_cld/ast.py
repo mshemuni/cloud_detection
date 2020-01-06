@@ -7,6 +7,8 @@ Created on Thu Nov 28 09:45:24 2019
 from datetime import datetime
 from datetime import timedelta
 
+from math import floor
+
 from matplotlib import pyplot as plt
 
 from numpy import float64 as f64
@@ -18,6 +20,8 @@ from numpy import arccos
 from numpy import ones
 from numpy import ceil
 from numpy import where
+from numpy import mean
+from numpy import std
 
 from astropy.stats import histogram as hist
 
@@ -45,6 +49,7 @@ from skimage.exposure import rescale_intensity as ri
 from sep import extract
 from sep import Background
 
+from cv2 import resize as cvresize
 
 class Update:
     """Updates modules"""
@@ -75,6 +80,23 @@ class Image:
             y_max = result[1].max()
             return array[x_min:x_max, y_min:y_max]
 
+        except Exception as excpt:
+            self.logger.log(excpt)
+            
+    def resize(self, array, new_size):
+        """Resize a 2D array"""
+        self.logger.log("Resizing array")
+        try:
+            if "%" in new_size:
+                h, w = array.shape
+                multiplier = int(new_size.replace("%", "").strip()) / 100
+                new_size = (int(w * multiplier), int(h * multiplier))
+                return cvresize(array, new_size)
+            else:
+                if type(new_size) == int:
+                    new_size = (new_size, new_size)
+                    
+                return cvresize(array, new_size)
         except Exception as excpt:
             self.logger.log(excpt)
 
@@ -122,6 +144,8 @@ class Image:
         self.logger.log("Normalizing array")
         try:
             ret = []
+            the_max = array.max()
+            the_min = array.min()
             for layer in range(array.shape[lindex]):
                 if lindex == 0:
                     the_array = array[layer]
@@ -131,8 +155,7 @@ class Image:
                     the_array = array[:, :, layer]
                 else:
                     break
-                new_layer = (the_array - the_array.min()) / (
-                    the_array.max() - the_array.min())
+                new_layer = (the_array - the_min) / (the_max - the_min)
                 ret.append(new_layer)
 
             ret = ar(ret)
@@ -159,11 +182,13 @@ class Image:
         """Show the image"""
         self.logger.log("Displaying array")
         try:
+            m, s = mean(array), std(array)
             if add_points is not None:
                 colors = ["red", "green", "blue", "cyan"]
                 for it, point in enumerate(add_points):
                     plt.scatter(point[0], point[1], s=20, c=colors[it])
-            plt.imshow(array)
+            plt.imshow(array, cmap="Greys_r", interpolation='nearest',
+                       vmin=m - s, vmax=m + s, origin='lower')
             plt.axis('off')
             plt.show()
         except Exception as excpt:
@@ -199,7 +224,7 @@ class Image:
                                              sharex=True, sharey=True)
 
                 ax1.axis('off')
-                ax1.imshow(self.normalize(image))
+                ax1.imshow(self.normalize(image), cmap=plt.cm.gray)
                 ax1.set_title('Input image')
 
                 # Rescale histogram for better display
@@ -464,6 +489,29 @@ class TimeCalc(Time):
                 return ret.datetime
         except Exception as excpt:
             self.logger.log(excpt)
+            
+    def day_part(self, utc, gap=30):
+        try:
+            jd_gap = 0.000694444 * gap
+            jd = self.jd(utc)
+            
+            floor_jd = floor(jd)
+            floor_date = self.jd_r(floor_jd)
+
+            twi_start_jd = self.twilight_evening(floor_date,
+                                                 which="NEXT", jd=True)
+            twi_end_jd = self.twilight_morning(floor_date,
+                                               which="NEXT", jd=True)
+            if twi_start_jd + jd_gap < jd and jd < twi_end_jd + jd_gap:
+                return 1
+            
+            if twi_start_jd - jd_gap > jd or jd > twi_end_jd - jd_gap:
+                return 0
+            
+            return -1
+            
+        except Exception as excpt:
+            self.logger.log(excpt)
 
 
 class Coordinates:
@@ -499,7 +547,7 @@ class Site:
         """Create site"""
         try:
             s = EarthLocation(lat=self._lati_, lon=self._long_,
-                              height=self._alti_ * units.meters)
+                              height=self._alti_ * units.m)
             return s
         except Exception as excpt:
             self.logger.log(excpt)
@@ -508,7 +556,7 @@ class Site:
         """Update Site"""
         try:
             self.site = EarthLocation(lat=lati, lon=long,
-                                      height=alti * units.meters)
+                                      height=alti * units.m)
         except Exception as excpt:
             self.logger.log(excpt)
 
