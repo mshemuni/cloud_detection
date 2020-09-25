@@ -5,7 +5,7 @@ sep==1.0.3
 numpy==1.16.5
 astropy==3.2.1
 scikit_image==0.15.0
-tensorflow==2.0.0
+tensorflow==2.0.3
 astroplan==0.6
 Pillow==7.0.0
 scikit_learn==0.22.1
